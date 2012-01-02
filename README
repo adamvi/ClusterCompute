@@ -1,0 +1,3 @@
+The contents of this package have not been endorsed by Amazon Web Services (AWS), and I am in no way connected to said organization (other than the fact that I use their services for computational purposes).  The functions included herein are experimental and come with no warrantee or promise of help on my part.
+
+Furthermore, there are additional system requirements (including Java >= version 5.0, a secure shell application and AWS EC2 tools) for the included functions to work.  Support for these requirements are not provided here.  Further information can be found in the package DESCRIPTION.  If all else fails, Google it!
