@@ -1,3 +1,9 @@
-The contents of this package have not been endorsed by Amazon Web Services (AWS), and I am in no way connected to said organization (other than the fact that I use their services for computational purposes).  The functions included herein are experimental and come with no warrantee or promise of help on my part.
+The contents of this package have not been endorsed or commissioned by Amazon Web Services (AWS), and I am in no way connected to said organization (other than the fact that I use their services for computational purposes).  The functions included herein are experimental and come with no warrantees, guarantees or promise of help on my part.
 
-Furthermore, there are additional system requirements (including Java >= version 5.0, a secure shell application and AWS EC2 tools) for the included functions to work.  Support for these requirements are not provided here.  Further information can be found in the package DESCRIPTION.  If all else fails, Google it!
+Furthermore, there are additional system requirements (including Java >= version 5.0, a secure shell application and AWS EC2 tools) for the included functions to work.  Support for these requirements are not provided here.  Further information can be found online - See the EC2 Getting Started with the Command Line Tools guide (http://docs.amazonwebservices.com/AWSEC2/2010-06-15/UserGuide/):
+
+Amazon EC2 API Tools (http://aws.amazon.com/developertools/)
+Java Runtime Environment (JRE) - www.Java.com.  
+OpenSSH: A secure shell application - www.openssh.com.
+
+If all else fails, Google it!
