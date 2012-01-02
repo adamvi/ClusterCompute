@@ -1,0 +1,14 @@
+citHeader("To cite package 'ClusterCompute' in publications use:")
+
+citEntry(entry = "Manual",
+         title        = "{ClusterCompute}: Amazon Web Services Compute Cluster Configuration and Management",
+         author       = "Adam R. Van Iwaarden",
+         year         = "2011",
+         note         = "R package version 0.0-1.0",
+         url          = "http://cran.r-project.org/web/packages/ClusterCompute/index.html",
+         
+         textVersion  = paste("Adam R. Van Iwaarden (2011).",
+                        "ClusterCompute: Amazon Web Services Compute Cluster Configuration and Management.",
+                        "(R package version 0.0-1.0.",
+                        "URL http://cran.r-project.org/web/packages/ClusterCompute/index.html")
+)

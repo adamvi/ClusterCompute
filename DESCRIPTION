@@ -1,0 +1,21 @@
+Package: ClusterCompute
+Version: 0.0-1.5
+Date: 2012-1-2
+Title: Amazon Web Services Compute Cluster Configuration and Management
+Author@R: person("Adam", "Van Iwaarden",
+                 email="vaniwaarden@colorado.edu")
+Author:  Adam R. Van Iwaarden <vaniwaarden@colorado.edu>
+Maintainer: Adam R. Van Iwaarden <vaniwaarden@colorado.edu>
+Depends: R (>= 2.10)
+Description: Functions to start, configure and manage nodes of an Amazon Web Services Compute Cluster. 
+        The main function configures the nodes with passwordless ssh between nodes, allows the user 
+        to send necessary files to the nodes, install (or update) R packages and execute Linux system 
+        commands on all compute nodes.  Helper functions allow the user to copy additional files 
+        (e.g. script files or results from analyses) to and from their local machine, log on to any node, 
+        kill nodes of the cluster, or terminate all running instances.
+SystemRequirements: Amazon EC2 API Tools (http://aws.amazon.com/developertools/) with
+        Java version 5 (or later) compatible Java Runtime Environment (JRE).  See
+        EC2 Getting Started with the Command Line Tools guide (http://docs.amazonwebservices.com/AWSEC2/2010-06-15/UserGuide/).
+        A secure shell application (e.g. OpenSSH - www.openssh.com/) is also required for internal system calls to 'ssh' and 'scp'.
+LazyLoad: Yes
+License: GPL-3 | file LICENSE
