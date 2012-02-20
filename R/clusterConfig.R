@@ -240,7 +240,8 @@
 	
 	if (!missing(master.attach.volume.id)) {
 		mast.inst <- instancesParsed[[grep(machinenames[1], names(instancesParsed))]][2]
-		eval(parse(text=paste("system(\"cd ", ec2.path, "; ec2-attach-volume ", master.attach.volume.id, " -i ", mast.inst, " -d /dev/sdk\")", sep = "")))	
+		eval(parse(text=paste("system(\"cd ", ec2.path, "; ec2-attach-volume ", master.attach.volume.id, " -i ", mast.inst, " -d /dev/sdk\")", sep = "")))
+		Sys.sleep(20) # wait so that volume is available for mounting
 	}
 	
 	######################################################################################################################################################
