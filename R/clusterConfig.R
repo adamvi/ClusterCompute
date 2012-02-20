@@ -38,7 +38,8 @@
 	run.instances = FALSE,		#	Should the function start new instances. Default is FALSE, assuming user has previously started instances ...
 	spot.instances = TRUE,		#	Should the function bid on spot instances. Default is TRUE. If FALSE, instances will start immediately at full price.
 	price,						#	Maximum price user would like to bid on spot instances. See documentation for 'ec2-request-spot-instances' for more information.
-	block.device.mapping,		#	Describes the mapping that defines native device names to use when exposing virtual devices.
+	block.device.mapping,		#	Describes the mapping that defines native device names to use when exposing virtual devices. Attaches volume(s) to all nodes. 
+	master.attach.volume.id,		#	Character string.  The volume id the user wants to attach to the master node.  Device will be named '/dev/sdk' by default.
 	packages,					#	R packages needed to be installed on all nodes. Passed as a concatenated string (e.g. c("plyr", "SGP"))
 	options = "dep = T",		#	Options argument passed to EACH package installation as ONE string.  Default includes dependencies.
 	repos = "http://watson.nci.nih.gov/cran_mirror/", #	User's prefered repository. Default is MD, which works quickly AWS cluster compute instances.
@@ -49,7 +50,11 @@
 	xtra.Rcmd,					#	Additional (or more complicated) commands to execute remotely on each instance of R.
 	xtra.SYScmd) {				#	Commands to execute remotely on each node as ROOT (e.g. R CMD INSTALL NewPackage_0.0.tar.gz)
 
-	### Check to make sure working directory file name is valid (no spaces) and ec2.path ends in a forward slash (for Mac and Linux).
+	###
+	###  Initial Call Specification Checks
+	###
+	
+	# Check to make sure working directory file name is valid (no spaces) and ec2.path ends in a forward slash (for Mac and Linux).
 	if (missing(local.directory))	local.directory <- getwd()
 
 	if (substring(target.directory[[1]], 1, 1)!="/") target.directory[[1]] <- paste("/", target.directory[[1]], sep="")
@@ -62,26 +67,51 @@
 	if (missing(ec2.path)) stop("ec2.path argument is missing.  The path to the EC2 API Tools and *.pem keypairs is REQUIRED.")
 	if (substring(ec2.path, nchar(ec2.path), nchar(ec2.path))!="/") ec2.path <- paste(ec2.path, "/", sep="")
 	
-	### Create directory to house the source file
+	if (!missing(master.attach.volume.id)) {
+		volumeParsed <- eval(parse(text=paste("sapply(system('ec2-describe-volumes ", master.attach.volume.id, "', intern=TRUE), strsplit, '\t')", sep = "")))
+		if (length(volumeParsed)==0) stop("Volume ID provided does not exist. Please check value and try again. Volume ID has form 'vol-4282672b'.")
+		avail.zone <- paste(' --availability-zone', volumeParsed[[1]][5])
+		if (!missing(master.attach.volume.id) & (length(grep("/dev/sdk", block.device.mapping)) != 0)) {
+			stop("Select 'block.device.mapping' name other than '/dev/sdk' when also attaching a volume to master instance via 'master.attach.volume.id'.")
+		}
+	}  else avail.zone <- NULL
+	
+	if (!missing(block.device.mapping)) {
+		if ((length(grep("/dev/sdb", block.device.mapping)) + length(grep("/dev/sdc", block.device.mapping)) + length(grep("/dev/sdd", block.device.mapping)) 
+			+length(grep("/dev/sde", block.device.mapping)) + length(grep("/dev/sde", block.device.mapping))) > 0) {
+			stop("Block device names /dev/sdb through /dev/sde, and /dev/sdk are reserved.  Please select a different device name.")
+		}
+		if (substring(block.device.mapping, 1, 3) != " -b") block.device.mapping <- paste(" -b", block.device.mapping)		
+		if (substring(block.device.mapping, 1, 3) == "-b ") block.device.mapping <- paste(" ", block.device.mapping, sep="")
+	}  else block.device.mapping <- NULL
+	
+	###
+	### Create directory to house the source files and save the call in a text file.
+	###
+	
 	if (is.na(file.info("CLUSTER_CONFIG_FILES")$isdir)) {
 		dir.create("CLUSTER_CONFIG_FILES")	}
 
 	call <- match.call(expand.dots = FALSE)
 	cat(rawToChar(serialize(call, NULL, ascii=T)),  "\n", sep = "", file = "CLUSTER_CONFIG_FILES/call.txt") 
 
-	###  Start up instances using EC2 Tools command line application
+	###
+	###  Start up instances using EC2 Tools command line application (if requested).  
+	###
+	
 	if (run.instances) {
 		kp <- gsub(".pem", "", keypair) # remove .pem file extention.  Not needed and better to be consistent.
-
+		
 		if (spot.instances) {
 			if (missing(price)) {
-				price <- sapply(eval(parse(text=paste("system('cd ", ec2.path, "; ec2-describe-spot-price-history --instance-type ", inst.type, "', intern=TRUE)", sep=""))), strsplit, "\t")
+				price <- sapply(eval(parse(text=paste("system('cd ", ec2.path, "; ec2-describe-spot-price-history --instance-type ", 
+					inst.type, "', intern=TRUE)", sep=""))), strsplit, "\t")
 				price <- round(mean(as.numeric(sapply(1:length(price), function(x) price[[x]][2]))), 3)
 			}
 			
 			eval(parse(text=paste("system('cd ", ec2.path, "; ec2-request-spot-instances ", ami.id, " -p ", price, " -n ", num.nodes, 
-				" --launch-group ",  l.group, " -g ",  s.group, 
-				" -b ", block.device.mapping, " -k ",  kp, " -t ", inst.type, "')", sep = "")))
+				" --launch-group ",  l.group, " -g ",  s.group, avail.zone,
+				block.device.mapping, " -k ",  kp, " -t ", inst.type, "')", sep = "")))
 
 			Sys.sleep(120) # wait at least two minutes before starting system query
 			
@@ -94,41 +124,45 @@
 			while(notRunning) {
 				requestsParsed <- sapply(system("ec2-describe-spot-instance-requests", intern=TRUE), strsplit, "\t")
 
-				if (requestsParsed[[end]][6]=="active") notRunning <- FALSE  else notRunning <- TRUE
+				if (requestsParsed[[end]][6]=="active") notRunning <- FALSE
 				if (requestsParsed[[end]][6]=="cancelled") stop("Spot-Instance Request CANCELLED.")
 
 				if (requestsParsed[[end]][1]=="SPOTINSTANCEFAULT") {
 					stop("Fault occurred in Spot-Instance Request. \nError Message(s) returned from EC2: \n", paste(requestsParsed[[end]][-1], collapse="\n"))
 				}
+				Sys.sleep(10) # Wait 10 seconds before next query.
 			} # END while(notRunning)
+			Sys.sleep(60) # Wait a minute while instances start up.
 		}	else {
 			eval(parse(text=paste("system('cd ", ec2.path, "; ec2-run-instances ", ami.id, " --instance.count ", num.nodes, 
 				" --group ",  s.group, " --placement-group ", p.group,
-				" --key ",  kp, " --instance-type ", inst.type,  " -b ", block.device.mapping, "')", sep = "")))		
+				" --key ",  kp, " --instance-type ", inst.type,  block.device.mapping, "')", sep = "")))		
 		} # END if (spot.instances) / else ...
 
 	### Query EC2 Tools for running instances and get machine names 
-	# New code based on JD Long: https://gist.github.com/478930#file_start_ec2_instance_ssh.r
+	### code based on JD Long: https://gist.github.com/478930#file_start_ec2_instance_ssh.r
 	notRunning <- TRUE; runningInstances <- NULL
 	while(notRunning) {
 		while(length(runningInstances)!=num.nodes) {
 			instancesParsed <- sapply(system("ec2-describe-instances", intern=TRUE), strsplit, "\t")
-			runningInstances <- NULL; machinenames <- NULL; ri <- 1; last.inst <- length(instancesParsed)
-			for (a in 1:last.inst) {
-				if (instancesParsed[[a]][[1]]=="INSTANCE") {
-					if (instancesParsed[[a]][[6]]=="running") {
-						runningInstances[[ri]] <- instancesParsed[[a]]
-						machinenames[[ri]] <- runningInstances[[ri]][[4]]
-						startTime <- strptime(runningInstances[[ri]][[11]], "%Y-%m-%dT%H:%M:%S")
-						ri <- ri + 1
-						notRunning <- FALSE
-					} else notRunning <- TRUE
-				} #END if (instancesParsed[[a]][[1]]=="INSTANCE")
+			instancesParsed <- instancesParsed[grep("INSTANCE", names(instancesParsed))]
+			instancesParsed <- instancesParsed[-grep("terminated", names(instancesParsed))]
+
+			runningInstances <- NULL; machinenames <- NULL; ri <- 1
+			for (a in 1:length(instancesParsed)) {
+				if (instancesParsed[[a]][[6]]=="running") {
+					runningInstances[[ri]] <- instancesParsed[[a]]
+					machinenames[[ri]] <- runningInstances[[ri]][[4]]
+					startTime <- strptime(runningInstances[[ri]][[11]], "%Y-%m-%dT%H:%M:%S")
+					ri <- ri + 1
+					notRunning <- FALSE
+				} else notRunning <- TRUE
 			} # END a loop
+			Sys.sleep(10) # Wait 10 seconds before next query.
 		} # END while(length(...))
 	} # END while(notRunning)
 	
-	#  Instances don't fully start up even when status is "running."  Wait another 2 minutes.  
+	#  Instances don't fully start up even when status is "running."  Wait another minute or so.
 	#  If still not running, run.instances function with run.instances = TRUE.
 	Sys.sleep(90)
 
@@ -147,8 +181,8 @@
 
 		if (spot.instances) {
 			requestsParsed <- sapply(system("ec2-describe-spot-instance-requests", intern=TRUE), strsplit, "\t")
-			end <- length(requestsParsed)
-			if (end > 0) status <- requestsParsed[[end]][6]  else spot.instances <- FALSE
+			num.reqs <- length(requestsParsed)
+			if (num.reqs > 0) status <- requestsParsed[[num.reqs]][6]  else spot.instances <- FALSE
 		}#  else status <- "no_requests"
 
 		if (spot.instances & status != "active") {
@@ -156,40 +190,51 @@
 			while(notRunning) {
 				requestsParsed <- sapply(system("ec2-describe-spot-instance-requests", intern=TRUE), strsplit, "\t")
 
-				if (requestsParsed[[end]][6]=="active") notRunning <- FALSE
-				if (requestsParsed[[end]][6]=="cancelled") stop("Spot-Instance Request CANCELLED.  Please make new spot-instance request or change argument to 'spot.instances=FALSE'.")
+				if (requestsParsed[[num.reqs]][6]=="active") notRunning <- FALSE
+				if (requestsParsed[[num.reqs]][6]=="cancelled") stop("Spot-Instance Request CANCELLED.  Please make new spot-instance request or change argument to 'spot.instances=FALSE'.")
 
-				if (requestsParsed[[end]][1]=="SPOTINSTANCEFAULT") {
-					stop("Fault occurred in Spot-Instance Request. \nError Message(s) returned from EC2: \n", paste(requestsParsed[[end]][-1], collapse="\n"))
+				if (requestsParsed[[num.reqs]][1]=="SPOTINSTANCEFAULT") {
+					stop("Fault occurred in Spot-Instance Request. \nError Message(s) returned from EC2: \n", paste(requestsParsed[[num.reqs]][-1], collapse="\n"))
 				}
 			} # END while(notRunning)
 		}
 
 		instancesParsed <- sapply(system("ec2-describe-instances", intern=TRUE), strsplit, "\t")
+		instancesParsed <- instancesParsed[grep("INSTANCE", names(instancesParsed))]
+		instancesParsed <- instancesParsed[-grep("terminated", names(instancesParsed))]
+
 		last.inst <- length(instancesParsed)
 		if (status == "active" & last.inst == 0) {
 			Sys.sleep(90)
-			if (length(sapply(system("ec2-describe-instances", intern=TRUE), strsplit, "\t")) == 0) stop("Instances")
+			instancesParsed <- sapply(system("ec2-describe-instances", intern=TRUE), strsplit, "\t")
+			instancesParsed <- instancesParsed[grep("INSTANCE", names(instancesParsed))]
+			instancesParsed <- instancesParsed[grep("running", names(instancesParsed))]	
+			if (length(instancesParsed) == 0) stop("There are NO instances running.  Please check status of spot-instance requests and instances.")
 		}
 
 		runningInstances <- NULL; machinenames <- NULL; ri <- 1
 		for (b in 1:last.inst) {
-			if (instancesParsed[[b]][[1]]=="INSTANCE") {
-				if (instancesParsed[[b]][[6]]=="terminated") stop("HOLY SHIT! You're instances have been terminated :(")
-
-				if (instancesParsed[[b]][[6]]=="running") {
-					runningInstances[[ri]] <- instancesParsed[[b]]
-					machinenames[[ri]] <- instancesParsed[[b]][[4]]
-					ri <- ri + 1
-				}
+			if (instancesParsed[[b]][[6]]=="running") {
+				runningInstances[[ri]] <- instancesParsed[[b]]
+				machinenames[[ri]] <- instancesParsed[[b]][[4]]
+				ri <- ri + 1
 			}
 		}
 	} # END if (!run.instances)
 
 	# serialize and save 'runningInstances' object to use later in killCluster and killWorker functions (if executed from another instance of R)
-	# Moved outside of notRunning loop so that it is re-written if "run.instances."
+	# Moved outside of notRunning loop so that it is re-written if '!run.instances'.
 	cat(rawToChar(serialize(runningInstances, NULL, ascii=TRUE)),  "\n", sep = "", file = "CLUSTER_CONFIG_FILES/runningInstances.txt")
 
+	###
+	###  Attach volume if requested:
+	###
+	
+	if (!missing(master.attach.volume.id)) {
+		mast.inst <- instancesParsed[[grep(machinenames[1], names(instancesParsed))]][2]
+		eval(parse(text=paste("system('cd ", ec2.path, "; ec2-attach-volume ", master.attach.volume.id, " -i ", mast.inst, " -d /dev/sdk')", sep = "")))	
+	}
+	
 	######################################################################################################################################################
 	###
 	###		Configure Single-node Instance
@@ -218,11 +263,11 @@
 
 		if (singleNode == 1) { # 1) copy the file 2) execute it remotely once its there.
 			cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", 
-				local.directory, "/CLUSTER_CONFIG_FILES/remoteRstuff.R root@", machinenames[1], ":", target.directory[[1]], "')!=0) {Sys.sleep(3)}\n\n", sep="", 
+				local.directory, "/CLUSTER_CONFIG_FILES/remoteRstuff.R root@", machinenames[1], ":/root')!=0) {Sys.sleep(3)}\n\n", sep="", 
 				file="CLUSTER_CONFIG_FILES/singleNode_0.R")
 
-			cat("while(system('cd ", ec2.path, "; ssh -i ", keypair, " root@", machinenames[1],
-				" -o StrictHostKeyChecking=no 'R CMD BATCH remoteRstuff.R | exit'')!=0) {Sys.sleep(3)}\n", sep = "", 
+			cat("while(system(\"cd ", ec2.path, "; ssh -i ", keypair, " root@", machinenames[1],
+				" -o StrictHostKeyChecking=no 'R CMD BATCH remoteRstuff.R | exit'\")!=0) {Sys.sleep(3)}\n", sep = "", 
 				file="CLUSTER_CONFIG_FILES/singleNode_0.R", append=TRUE)
 		}
 
@@ -238,9 +283,9 @@
 		# Try the command 2 times - if it doesn't work don't hold up the process.  User will need to execute the system command on each node.
 		count <- 1
 		if (!missing(xtra.SYScmd)) for (z in singleNode:(singleNode + length(xtra.SYScmd))) {
-			cat("ss = 0\ntry(ss<-system('cd ", ec2.path, "; ssh -i ", keypair, " root@", machinenames[1],
-				" -o StrictHostKeyChecking=no '", xtra.SYScmd[count], " | exit''), silent = TRUE)\n  if (ss!=0) {try(system('cd ", ec2.path, "; ssh -i ",
-				keypair, " root@", machinenames[1], " -o StrictHostKeyChecking=no '", xtra.SYScmd[count], " | exit''), silent = TRUE)}\n\n", sep = "", 
+			cat("ss = 0\ntry(ss<-system(\"cd ", ec2.path, "; ssh -i ", keypair, " root@", machinenames[1],
+				" -o StrictHostKeyChecking=no '", xtra.SYScmd[count], " | exit'\"), silent = TRUE)\n  if (ss!=0) {try(system(\"cd ", ec2.path, "; ssh -i ",
+				keypair, " root@", machinenames[1], " -o StrictHostKeyChecking=no '", xtra.SYScmd[count], " | exit'\"), silent = TRUE)}\n\n", sep = "", 
 				file=paste("CLUSTER_CONFIG_FILES/singleNode_", z, ".R", sep=""))
 			singleNode <- z; count <- count+1
 		}
@@ -270,7 +315,7 @@
 	for (d in 1:length(machinenames)) {
 		if (d == 1) apnd<-FALSE else apnd<-TRUE
 		cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", ec2.path, keypair," root@", 
-			machinenames[d], ":", target.directory[[1]], "')!=0) {Sys.sleep(3)}\n\n", sep="", file="CLUSTER_CONFIG_FILES/Local_CMD.R", append=apnd)
+			machinenames[d], ":/root')!=0) {Sys.sleep(3)}\n\n", sep="", file="CLUSTER_CONFIG_FILES/Local_CMD.R", append=apnd)
 	}
 	
 	# Create the first set of node command files (one per node)
@@ -332,16 +377,16 @@
 	# Execute command files remotely (from user's local machine) once files have been copied over:
 	# Log into each instance as ROOT, R CMD run the first command file (Node#_a.R):	  
 	for (n in 1:length(machinenames)) {
-		cat("while(system('cd ", ec2.path, "; ssh -i ", keypair, " root@", machinenames[n], 
-			" -o StrictHostKeyChecking=no 'R CMD BATCH Node", (n-1),"_a.R | exit'')!=0) {Sys.sleep(3)}\n\n", sep = "", 
+		cat("while(system(\"cd ", ec2.path, "; ssh -i ", keypair, " root@", machinenames[n], 
+			" -o StrictHostKeyChecking=no 'R CMD BATCH Node", (n-1),"_a.R | exit'\")!=0) {Sys.sleep(3)}\n\n", sep = "", 
 			file="CLUSTER_CONFIG_FILES/Local_CMD.R", append=TRUE)
 	} # END Local_CMD.R file Creation
 
 	# Create Node Specific Local_CMD_#.R files to be executed in BATCH form
 	# Log into each instance as ROOT, R CMD run the second command file (Node#_b.R):	  
 	for (p in 1:length(machinenames)) {
-		cat("while(system('cd ", ec2.path, "; ssh -i ", keypair, " root@", machinenames[p],
-			" -o StrictHostKeyChecking=no 'R CMD BATCH Node", (p-1),"_b.R | exit'')!=0) {Sys.sleep(3)}\n\n", sep = "", 
+		cat("while(system(\"cd ", ec2.path, "; ssh -i ", keypair, " root@", machinenames[p],
+			" -o StrictHostKeyChecking=no 'R CMD BATCH Node", (p-1),"_b.R | exit'\")!=0) {Sys.sleep(3)}\n\n", sep = "", 
 			file=paste("CLUSTER_CONFIG_FILES/Local_CMD_", (p-1), ".R", sep = ""))
 	}
 
@@ -378,9 +423,9 @@
 	# Try the command 2 times - if it doesn't work don't hold up the process.  User will need to execute the system command on each node.
 
 		if (!missing(xtra.SYScmd)) for (s in 1:length(xtra.SYScmd)) {
-			cat("ss = 0\ntry(ss<-system('cd ", ec2.path, "; ssh -i ", keypair, " root@", machinenames[q],
-				" -o StrictHostKeyChecking=no '", xtra.SYScmd[s], " | exit''), silent = TRUE)\n  if (ss!=0) {try(system('cd ", ec2.path, "; ssh -i ",
-				keypair, " root@", machinenames[q], " -o StrictHostKeyChecking=no '", xtra.SYScmd[s], " | exit''), silent = TRUE)}\n\n", sep = "", 
+			cat("ss = 0\ntry(ss<-system(\"cd ", ec2.path, "; ssh -i ", keypair, " root@", machinenames[q],
+				" -o StrictHostKeyChecking=no '", xtra.SYScmd[s], " | exit'\"), silent = TRUE)\n  if (ss!=0) {try(system(\"cd ", ec2.path, "; ssh -i ",
+				keypair, " root@", machinenames[q], " -o StrictHostKeyChecking=no '", xtra.SYScmd[s], " | exit'\"), silent = TRUE)}\n\n", sep = "", 
 				file=paste("CLUSTER_CONFIG_FILES/Local_CMD_", (q-1), ".R", sep = ""), append=TRUE)
 	 	}
 	} # END q loop - Local_CMD_#.R creation

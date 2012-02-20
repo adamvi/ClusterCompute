@@ -20,6 +20,7 @@ clusterConfig(ami.id,
               spot.instances = TRUE,
               price,
               block.device.mapping,
+              master.attach.volume.id,
               packages,
               options = "dep = T",
               repos = "http://watson.nci.nih.gov/cran_mirror/",
@@ -52,11 +53,13 @@ clusterConfig(ami.id,
   }
   \item{run.instances}{Logical.  Should the function start new instances. Default is FALSE, assuming user has previously started instances.  This is also necessary if the instances have not fully initialized before the function and associated system commands are run or an error has been made in the specification of the call to \code{clusterConfig}. In some cases the files will not be copied over to the Master node, or the cluster may not be set up properly.  If set to \code{TRUE} the function will start new instances.  Currently the function is set to wait for 90 seconds after the instances are "running" before attempting to contact them.
   }
-  \item{spot.instances}{Logical.  Should the function bid on spot instances. Default is TRUE. If FALSE, (and run.instances = TRUE) instances will start immediately at full price.  Note that spot instances take longer to start because Amazon must accept bids.  Also, unaccepted requests may need to be cancelled manually, or may fail
+  \item{spot.instances}{Logical.  Should the function bid on spot instances. Default is TRUE. If FALSE, (and run.instances = TRUE) instances will start immediately at full price.  Note that spot instances take longer to start because Amazon must accept bids.  Also, spot instance requests are made as one-time requests with NO end time (--valid-until argument is unspecified).  All unaccepted requests may need to be cancelled manually, or may fail.
   }
   \item{price}{Numeric. Maximum price user would like to bid on spot instances. See documentation for the 'ec2-request-spot-instances' command for more information.  If missing and both spot.instances and run.instances are TRUE the average of the past two months will be calculated and used (via 'ec2-describe-spot-price-history').
   }
-  \item{block.device.mapping}{Character string. Describes the mapping that defines native device names to use when exposing virtual devices.  
+  \item{block.device.mapping}{Character string. Describes the mapping that defines native device names to use when exposing virtual devices.  Can be used to increase the size of all AMI device sizes, or to attach a volume (existing or a new empty volume) to ALL instances.  Use \code{master.attach.volume.id} to attach a volume to master node.
+  }
+  \item{master.attach.volume.id}{Character string.  The volume id the user wants to attach to the master node.  Device will be named '/dev/sdk' by default and the zone the volume is located in will be specified for any instances run.  NOTE: if instances are started outside of the function, they must be started in the same availability zone in which the volume is located. 
   }
   \item{packages}{Character string. \code{R} packages the user needs installed on all nodes.  The AMI may already have many of the packages needed installed in the \code{R} library, but the user may need new packages installed or existing packages updated.  
   }
