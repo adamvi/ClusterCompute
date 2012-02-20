@@ -78,20 +78,21 @@
 				price <- sapply(eval(parse(text=paste("system('cd ", ec2.path, "; ec2-describe-spot-price-history --instance-type ", inst.type, "', intern=TRUE)", sep=""))), strsplit, "\t")
 				price <- round(mean(as.numeric(sapply(1:length(price), function(x) price[[x]][2]))), 3)
 			}
-			eval(parse(text=paste("system('cd ", ec2.path, "; ec2-request-spot-instances ", ami.id, " --price ", price, " --instance.count ", num.nodes, 
-				" --launch-group ",  l.group, " --group ",  s.group, " --placement-group ", p.group, 
-				" -b ", block.device.mapping, " --key ",  kp, " --instance-type ", inst.type, "')", sep = "")))
 			
-			Sys.sleep(60) # wait at least a minute before starting system query
+			eval(parse(text=paste("system('cd ", ec2.path, "; ec2-request-spot-instances ", ami.id, " -p ", price, " -n ", num.nodes, 
+				" --launch-group ",  l.group, " -g ",  s.group, 
+				" -b ", block.device.mapping, " -k ",  kp, " -t ", inst.type, "')", sep = "")))
+
+			Sys.sleep(120) # wait at least two minutes before starting system query
 			
 			### Query EC2 Tools for open spot requests 
 			requestsParsed <- sapply(system("ec2-describe-spot-instance-requests", intern=TRUE), strsplit, "\t")
+				end <- length(requestsParsed)
 			if (requestsParsed[[end]][6]=="open") message("Spot-Instance Request is OPEN.  Awaiting 'active' status and running instance status.")
 
 			notRunning <- TRUE; startInstances <- NULL
 			while(notRunning) {
 				requestsParsed <- sapply(system("ec2-describe-spot-instance-requests", intern=TRUE), strsplit, "\t")
-				end <- length(requestsParsed)
 
 				if (requestsParsed[[end]][6]=="active") notRunning <- FALSE  else notRunning <- TRUE
 				if (requestsParsed[[end]][6]=="cancelled") stop("Spot-Instance Request CANCELLED.")
@@ -113,7 +114,7 @@
 		while(length(runningInstances)!=num.nodes) {
 			instancesParsed <- sapply(system("ec2-describe-instances", intern=TRUE), strsplit, "\t")
 			runningInstances <- NULL; machinenames <- NULL; ri <- 1; last.inst <- length(instancesParsed)
-			for (a in (last.inst-num.nodes+1):last.inst) {
+			for (a in 1:last.inst) {
 				if (instancesParsed[[a]][[1]]=="INSTANCE") {
 					if (instancesParsed[[a]][[6]]=="running") {
 						runningInstances[[ri]] <- instancesParsed[[a]]
@@ -172,9 +173,9 @@
 		}
 
 		runningInstances <- NULL; machinenames <- NULL; ri <- 1
-		for (b in (last.inst-num.nodes+1):last.inst) {
+		for (b in 1:last.inst) {
 			if (instancesParsed[[b]][[1]]=="INSTANCE") {
-				if (instancesParsed[[b]][[6]]=="terminated") 
+				if (instancesParsed[[b]][[6]]=="terminated") stop("HOLY SHIT! You're instances have been terminated :(")
 
 				if (instancesParsed[[b]][[6]]=="running") {
 					runningInstances[[ri]] <- instancesParsed[[b]]
