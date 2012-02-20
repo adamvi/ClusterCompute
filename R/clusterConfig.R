@@ -68,7 +68,7 @@
 	if (substring(ec2.path, nchar(ec2.path), nchar(ec2.path))!="/") ec2.path <- paste(ec2.path, "/", sep="")
 	
 	if (!missing(master.attach.volume.id)) {
-		volumeParsed <- eval(parse(text=paste("sapply(system('ec2-describe-volumes ", master.attach.volume.id, "', intern=TRUE), strsplit, '\t')", sep = "")))
+		volumeParsed <- eval(parse(text=paste("sapply(system(\"ec2-describe-volumes ", master.attach.volume.id, "\", intern=TRUE), strsplit, '\t')", sep = "")))
 		if (length(volumeParsed)==0) stop("Volume ID provided does not exist. Please check value and try again. Volume ID has form 'vol-4282672b'.")
 		avail.zone <- paste(' --availability-zone', volumeParsed[[1]][5])
 		if (!missing(block.device.mapping)) {
@@ -106,14 +106,14 @@
 		
 		if (spot.instances) {
 			if (missing(price)) {
-				price <- sapply(eval(parse(text=paste("system('cd ", ec2.path, "; ec2-describe-spot-price-history --instance-type ", 
-					inst.type, "', intern=TRUE)", sep=""))), strsplit, "\t")
+				price <- sapply(eval(parse(text=paste("system(\"cd ", ec2.path, "; ec2-describe-spot-price-history --instance-type ", 
+					inst.type, "\", intern=TRUE)", sep=""))), strsplit, "\t")
 				price <- round(mean(as.numeric(sapply(1:length(price), function(x) price[[x]][2]))), 3)
 			}
 			
-			eval(parse(text=paste("system('cd ", ec2.path, "; ec2-request-spot-instances ", ami.id, " -p ", price, " -n ", num.nodes, 
+			eval(parse(text=paste("system(\"cd ", ec2.path, "; ec2-request-spot-instances ", ami.id, " -p ", price, " -n ", num.nodes, 
 				" --launch-group ",  l.group, " -g ",  s.group, avail.zone,
-				block.device.mapping, " -k ",  kp, " -t ", inst.type, "')", sep = "")))
+				block.device.mapping, " -k ",  kp, " -t ", inst.type, "\")", sep = "")))
 
 			Sys.sleep(120) # wait at least two minutes before starting system query
 			
@@ -136,9 +136,9 @@
 			} # END while(notRunning)
 			Sys.sleep(60) # Wait a minute while instances start up.
 		}	else {
-			eval(parse(text=paste("system('cd ", ec2.path, "; ec2-run-instances ", ami.id, " --instance.count ", num.nodes, 
+			eval(parse(text=paste("system(\"cd ", ec2.path, "; ec2-run-instances ", ami.id, " --instance.count ", num.nodes, 
 				" --group ",  s.group, " --placement-group ", p.group,
-				" --key ",  kp, " --instance-type ", inst.type,  block.device.mapping, "')", sep = "")))		
+				" --key ",  kp, " --instance-type ", inst.type,  block.device.mapping, "\")", sep = "")))		
 		} # END if (spot.instances) / else ...
 
 	### Query EC2 Tools for running instances and get machine names 
@@ -237,7 +237,7 @@
 	
 	if (!missing(master.attach.volume.id)) {
 		mast.inst <- instancesParsed[[grep(machinenames[1], names(instancesParsed))]][2]
-		eval(parse(text=paste("system('cd ", ec2.path, "; ec2-attach-volume ", master.attach.volume.id, " -i ", mast.inst, " -d /dev/sdk')", sep = "")))	
+		eval(parse(text=paste("system(\"cd ", ec2.path, "; ec2-attach-volume ", master.attach.volume.id, " -i ", mast.inst, " -d /dev/sdk\")", sep = "")))	
 	}
 	
 	######################################################################################################################################################
@@ -267,8 +267,8 @@
 		}
 
 		if (singleNode == 1) { # 1) copy the file 2) execute it remotely once its there.
-			cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", 
-				local.directory, "/CLUSTER_CONFIG_FILES/remoteRstuff.R root@", machinenames[1], ":/root')!=0) {Sys.sleep(3)}\n\n", sep="", 
+			cat("while(system(\"cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", 
+				local.directory, "/CLUSTER_CONFIG_FILES/remoteRstuff.R root@", machinenames[1], ":/root\")!=0) {Sys.sleep(3)}\n\n", sep="", 
 				file="CLUSTER_CONFIG_FILES/singleNode_0.R")
 
 			cat("while(system(\"cd ", ec2.path, "; ssh -i ", keypair, " root@", machinenames[1],
@@ -279,8 +279,8 @@
 		# scp files to the Instance
 		count <- 1
 		if (!missing(master.files)) for (y in singleNode:(singleNode + length(master.files))) {
-			cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, "/",
-			master.files[count], " root@", machinenames[1], ":", target.directory[[1]], "')!=0) {Sys.sleep(3)}\n\n", sep="", 
+			cat("while(system(\"cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, "/",
+			master.files[count], " root@", machinenames[1], ":", target.directory[[1]], "\")!=0) {Sys.sleep(3)}\n\n", sep="", 
 				file=paste("CLUSTER_CONFIG_FILES/singleNode_", y, ".R", sep=""))
 			singleNode <- y; count <- count+1
 		}
@@ -297,12 +297,12 @@
 
 		# Batch process the singleNode_#.R scripts on the users local machine:
 		for (aa in singleNode:0){
-			if (aa==0) batch<-".R')" else batch <- ".R &')"
-			eval(parse(text=paste("system('R CMD BATCH CLUSTER_CONFIG_FILES/singleNode_", aa, batch, sep = "")))
+			if (aa==0) batch<-".R\")" else batch <- ".R &\")"
+			eval(parse(text=paste("system(\"R CMD BATCH CLUSTER_CONFIG_FILES/singleNode_", aa, batch, sep = "")))
 		}
 
 		# Log the user into the master node from local machine.
-		eval(parse(text=paste("system('cd ", ec2.path, "; ssh -i ", keypair, " root@", machinenames[1], " -o StrictHostKeyChecking=no')", sep = "")))
+		eval(parse(text=paste("system(\"cd ", ec2.path, "; ssh -i ", keypair, " root@", machinenames[1], " -o StrictHostKeyChecking=no\")", sep = "")))
 		message("\n\t\tConnection to instance has been closed.  If instance is still running, connect again using 'logOn()'")
 	} # END Single Instance Configuration
 
@@ -319,36 +319,36 @@
 	# Secure copy the keypair file over to the worker nodes
 	for (d in 1:length(machinenames)) {
 		if (d == 1) apnd<-FALSE else apnd<-TRUE
-		cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", ec2.path, keypair," root@", 
-			machinenames[d], ":/root')!=0) {Sys.sleep(3)}\n\n", sep="", file="CLUSTER_CONFIG_FILES/Local_CMD.R", append=apnd)
+		cat("while(system(\"cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", ec2.path, keypair," root@", 
+			machinenames[d], ":/root\")!=0) {Sys.sleep(3)}\n\n", sep="", file="CLUSTER_CONFIG_FILES/Local_CMD.R", append=apnd)
 	}
 	
 	# Create the first set of node command files (one per node)
 	# This set creates a dsa passwordless keypair for each node and concatenates it to its own authorized key file
 	for (j in 1:length(machinenames)) {
-		cat("system('mv /root/", keypair, " .ssh')\n",sep="", 
+		cat("system(\"mv /root/", keypair, " .ssh\")\n",sep="", 
 			file=paste("CLUSTER_CONFIG_FILES/Node", (j-1),"_a.R", sep=""))
-		cat("system('cd .ssh; ssh-keygen -t dsa -P '' -f ~/.ssh/id_dsa')\n", sep="", 
+		cat("system(\"cd .ssh; ssh-keygen -t dsa -P '' -f ~/.ssh/id_dsa\")\n", sep="", 
 			file=paste("CLUSTER_CONFIG_FILES/Node", (j-1),"_a.R", sep=""), append=TRUE)
-		cat("system('cd .ssh; cat id_dsa.pub >> authorized_keys')\n", sep="", 
+		cat("system(\"cd .ssh; cat id_dsa.pub >> authorized_keys\")\n", sep="", 
 			file=paste("CLUSTER_CONFIG_FILES/Node", (j-1),"_a.R", sep=""), append=TRUE)
 
 	#  Copy the newly generated dsa keypair to the other nodes
 		for (k in 1:length(machinenames)) {
 			 if (k!=j) {
-			 	cat("system('cd .ssh; scp -r -o StrictHostKeyChecking=no -i ", keypair, " id_dsa.pub root@", 
-					machinenames[k], ":.ssh/authorized_keys", (j+1), "')\n", sep="", 
+			 	cat("system(\"cd .ssh; scp -r -o StrictHostKeyChecking=no -i ", keypair, " id_dsa.pub root@", 
+					machinenames[k], ":.ssh/authorized_keys", (j+1), "\")\n", sep="", 
 					file=paste("CLUSTER_CONFIG_FILES/Node", (j-1),"_a.R", sep=""), append=TRUE)
 			}
 		}
 	# Local_CMD file commands to secure copy the Node#_x.R files to the appropriate node.
 		for (l in 1:length(machinenames)) {
 			if (l==j) {
-				cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, 
-					"/CLUSTER_CONFIG_FILES/Node", (j-1),"_a.R root@", machinenames[j], ":/root')!=0) {Sys.sleep(3)}\n\n", sep="", 
+				cat("while(system(\"cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, 
+					"/CLUSTER_CONFIG_FILES/Node", (j-1),"_a.R root@", machinenames[j], ":/root\")!=0) {Sys.sleep(3)}\n\n", sep="", 
 					file="CLUSTER_CONFIG_FILES/Local_CMD.R", append=TRUE)
-				cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, 
-					"/CLUSTER_CONFIG_FILES/Node", (j-1),"_b.R root@", machinenames[j], ":/root')!=0) {Sys.sleep(3)}\n\n", sep="", 
+				cat("while(system(\"cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, 
+					"/CLUSTER_CONFIG_FILES/Node", (j-1),"_b.R root@", machinenames[j], ":/root\")!=0) {Sys.sleep(3)}\n\n", sep="", 
 					file="CLUSTER_CONFIG_FILES/Local_CMD.R", append=TRUE)
 			}
 		}
@@ -357,7 +357,7 @@
 	for (m in 1:length(machinenames)) {
 		if (m!=j) {
 			if (m==1) apnd<-FALSE else apnd<-TRUE
-			cat("system('cd .ssh; cat authorized_keys", (m+1), " >> authorized_keys')\n", 
+			cat("system(\"cd .ssh; cat authorized_keys", (m+1), " >> authorized_keys\")\n", 
 				sep="", file=paste("CLUSTER_CONFIG_FILES/Node", (j-1),"_b.R", sep=""), append=apnd)
 		}
 	}
@@ -408,21 +408,21 @@
 		cat(machinenames[q], " slots = ", avail.slots, " max-slots = ", max.slots, "\n", sep="", file="CLUSTER_CONFIG_FILES/machinefile", append=apnd)
 	# Secure copy the machinefile file to the Master Node
 		if (q==1) {
-			cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, 
-				"/CLUSTER_CONFIG_FILES/machinefile root@", machinenames[1], ":/root')!=0) {Sys.sleep(3)}\n\n", sep="", 
+			cat("while(system(\"cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, 
+				"/CLUSTER_CONFIG_FILES/machinefile root@", machinenames[1], ":/root\")!=0) {Sys.sleep(3)}\n\n", sep="", 
 				file="CLUSTER_CONFIG_FILES/Local_CMD_0.R", append=TRUE)
 
 		# Secure copy the data files to the Master Node
 			if (!missing(master.files)) for (f in 1:length(master.files)) {
-				cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, "/", 
-					master.files[f], " root@", machinenames[q], ":", target.directory[[1]], "')!=0) {Sys.sleep(3)}\n\n", sep="", 
+				cat("while(system(\"cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, "/", 
+					master.files[f], " root@", machinenames[q], ":", target.directory[[1]], "\")!=0) {Sys.sleep(3)}\n\n", sep="", 
 					file="CLUSTER_CONFIG_FILES/Local_CMD_0.R", append=TRUE)
 		 	}
 		}
 	# Secure copy the common files over to ALL Nodes (including Master)
 		if (!missing(all.node.files)) for (r in 1:length(all.node.files)) {
-			cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, "/", all.node.files[r],
-				" root@", machinenames[q], ":", target.directory[[2]], "')!=0) {Sys.sleep(3)}\n\n", sep="", 
+			cat("while(system(\"cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, "/", all.node.files[r],
+				" root@", machinenames[q], ":", target.directory[[2]], "\")!=0) {Sys.sleep(3)}\n\n", sep="", 
 				file=paste("CLUSTER_CONFIG_FILES/Local_CMD_", (q-1), ".R", sep = ""), append=TRUE)
 		}
 	# Try the command 2 times - if it doesn't work don't hold up the process.  User will need to execute the system command on each node.
@@ -438,13 +438,13 @@
 	# Run the Local_CMD.R and Local_CMD#.R scripts on the users local machine:
 	system("R CMD BATCH CLUSTER_CONFIG_FILES/Local_CMD.R")
 	for (t in length(machinenames):1){
-		if (t==1) batch<-".R')" else batch <- ".R &')"
-		eval(parse(text=paste("system('R CMD BATCH CLUSTER_CONFIG_FILES/Local_CMD_", (t-1), batch, sep = "")))
+		if (t==1) batch<-".R\")" else batch <- ".R &\")"
+		eval(parse(text=paste("system(\"R CMD BATCH CLUSTER_CONFIG_FILES/Local_CMD_", (t-1), batch, sep = "")))
 	}
 
 	# Log the user into the master node from local machine.
-	eval(parse(text=paste("system('cd ", ec2.path, "; ssh -i ", keypair, " root@", 
-		machinenames[1], " -o StrictHostKeyChecking=no')", sep = "")))
+	eval(parse(text=paste("system(\"cd ", ec2.path, "; ssh -i ", keypair, " root@", 
+		machinenames[1], " -o StrictHostKeyChecking=no\")", sep = "")))
 	message("\n\t\tConnection to instance has been closed.  If instance is still running, connect again using 'logOn()'")
 } # END clusterConfig function
 
