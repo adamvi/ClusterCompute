@@ -187,7 +187,7 @@
 			requestsParsed <- sapply(system("ec2-describe-spot-instance-requests", intern=TRUE), strsplit, "\t")
 			num.reqs <- length(requestsParsed)
 			if (num.reqs > 0) status <- requestsParsed[[num.reqs]][6]  else spot.instances <- FALSE
-		}#  else status <- "no_requests"
+		}  else status <- "active"
 
 		if (spot.instances & status != "active") {
 			notRunning <- TRUE; startInstances <- NULL
