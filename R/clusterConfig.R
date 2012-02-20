@@ -120,13 +120,16 @@
 			### Query EC2 Tools for open spot requests 
 			requestsParsed <- sapply(system("ec2-describe-spot-instance-requests", intern=TRUE), strsplit, "\t")
 				end <- length(requestsParsed)
-			if (requestsParsed[[end]][6]=="open") message("\n\tSpot-Instance Request is OPEN.  Awaiting 'active' status and running instance status.\n")
+			if (requestsParsed[[end]][6]=="open") message("\n\tSpot-Instance Request is OPEN.  Awaiting 'active' request status.\n")
 
 			notRunning <- TRUE; startInstances <- NULL
 			while(notRunning) {
 				requestsParsed <- sapply(system("ec2-describe-spot-instance-requests", intern=TRUE), strsplit, "\t")
 
-				if (requestsParsed[[end]][6]=="active") notRunning <- FALSE
+				if (requestsParsed[[end]][6]=="active") {
+					message("\n\tSpot-Instance Request is ACTIVE.  Awaiting instances status to be 'running'.\n")
+					notRunning <- FALSE
+				}
 				if (requestsParsed[[end]][6]=="cancelled") stop("Spot-Instance Request CANCELLED.")
 
 				if (requestsParsed[[end]][1]=="SPOTINSTANCEFAULT") {
@@ -134,7 +137,7 @@
 				}
 				Sys.sleep(10) # Wait 10 seconds before next query.
 			} # END while(notRunning)
-			Sys.sleep(60) # Wait a minute while instances start up.
+			Sys.sleep(60) # Wait a minute while instances FULLY start up.
 		}	else {
 			eval(parse(text=paste("system(\"cd ", ec2.path, "; ec2-run-instances ", ami.id, " --instance.count ", num.nodes, 
 				" --group ",  s.group, " --placement-group ", p.group,

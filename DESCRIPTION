@@ -1,5 +1,5 @@
 Package: ClusterCompute
-Version: 0.0-2.8
+Version: 0.0-2.85
 Date: 2012-2-20
 Title: Amazon Web Services Compute Cluster Configuration and Management
 Author@R: person("Adam", "Van Iwaarden",
