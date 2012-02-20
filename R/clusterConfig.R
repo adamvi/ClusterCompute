@@ -315,6 +315,7 @@
 	###
 	######################################################################################################################################################
 
+	if (num.nodes > 1) {
 	#  Create Local_CMD.R file - copy the keypair file, and copy node#_x.R files to each node.  Execute Node#_a.R file.  Sequential necessary
 	#  'while' loops used througout to ensure that the operation is performed.  Several times I've noticed 'operation timed out' / 'lost connection'
 	#  issues come up.  This is problematic enough that its best to just wait for the each expression to be executed.
@@ -449,5 +450,6 @@
 	eval(parse(text=paste("system(\"cd ", ec2.path, "; ssh -i ", keypair, " root@", 
 		machinenames[1], " -o StrictHostKeyChecking=no\")", sep = "")))
 	message("\n\t\tConnection to instance has been closed.  If instance is still running, connect again using 'logOn()'")
+	} # END Configure Multiple-node Cluster
 } # END clusterConfig function
 
