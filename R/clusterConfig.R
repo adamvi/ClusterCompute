@@ -39,14 +39,14 @@
 	spot.instances = TRUE,		#	Should the function bid on spot instances. Default is TRUE. If FALSE, instances will start immediately at full price.
 	price,						#	Maximum price user would like to bid on spot instances. See documentation for 'ec2-request-spot-instances' for more information.
 	block.device.mapping,		#	Describes the mapping that defines native device names to use when exposing virtual devices. Attaches volume(s) to all nodes. 
-	master.attach.volume.id,		#	Character string.  The volume id the user wants to attach to the master node.  Device will be named '/dev/sdk' by default.
+	master.attach.volume.id,	#	Character string.  The volume id the user wants to attach to the master node.  Device will be named '/dev/sdk' by default.
 	packages,					#	R packages needed to be installed on all nodes. Passed as a concatenated string (e.g. c("plyr", "SGP"))
 	options = "dep = T",		#	Options argument passed to EACH package installation as ONE string.  Default includes dependencies.
 	repos = "http://watson.nci.nih.gov/cran_mirror/", #	User's prefered repository. Default is MD, which works quickly AWS cluster compute instances.
 	master.files,				#	Data files, R script files, etc. user wants to secure copy (scp) to the Master node.
-	all.node.files,					#	Data files, R script files, etc. user wants to secure copy (scp) to the ALL nodes.
+	all.node.files,				#	Data files, R script files, etc. user wants to secure copy (scp) to the ALL nodes.
 	local.directory,			#	If missing, the current working directory will be used.
-	target.directory = list(MASTER="/root", All.NODES="/root"),	#	list of two elements, both character strings.  The first is the target directory for master.files, the second is that for all.nodes.files
+	target.directory = list(MASTER="/root", All.NODES="/root"),	#list, two character strings. Target directory path for master.files and all.nodes.files
 	xtra.Rcmd,					#	Additional (or more complicated) commands to execute remotely on each instance of R.
 	xtra.SYScmd) {				#	Commands to execute remotely on each node as ROOT (e.g. R CMD INSTALL NewPackage_0.0.tar.gz)
 
@@ -71,8 +71,10 @@
 		volumeParsed <- eval(parse(text=paste("sapply(system('ec2-describe-volumes ", master.attach.volume.id, "', intern=TRUE), strsplit, '\t')", sep = "")))
 		if (length(volumeParsed)==0) stop("Volume ID provided does not exist. Please check value and try again. Volume ID has form 'vol-4282672b'.")
 		avail.zone <- paste(' --availability-zone', volumeParsed[[1]][5])
-		if (!missing(master.attach.volume.id) & (length(grep("/dev/sdk", block.device.mapping)) != 0)) {
-			stop("Select 'block.device.mapping' name other than '/dev/sdk' when also attaching a volume to master instance via 'master.attach.volume.id'.")
+		if (!missing(block.device.mapping)) {
+			if(length(grep("/dev/sdk", block.device.mapping)) != 0) {
+			 stop("Select 'block.device.mapping' name other than '/dev/sdk' when also attaching a volume to master instance via 'master.attach.volume.id'.")
+			}
 		}
 	}  else avail.zone <- NULL
 	
@@ -118,7 +120,7 @@
 			### Query EC2 Tools for open spot requests 
 			requestsParsed <- sapply(system("ec2-describe-spot-instance-requests", intern=TRUE), strsplit, "\t")
 				end <- length(requestsParsed)
-			if (requestsParsed[[end]][6]=="open") message("Spot-Instance Request is OPEN.  Awaiting 'active' status and running instance status.")
+			if (requestsParsed[[end]][6]=="open") message("\n\tSpot-Instance Request is OPEN.  Awaiting 'active' status and running instance status.\n")
 
 			notRunning <- TRUE; startInstances <- NULL
 			while(notRunning) {
@@ -146,7 +148,9 @@
 		while(length(runningInstances)!=num.nodes) {
 			instancesParsed <- sapply(system("ec2-describe-instances", intern=TRUE), strsplit, "\t")
 			instancesParsed <- instancesParsed[grep("INSTANCE", names(instancesParsed))]
-			instancesParsed <- instancesParsed[-grep("terminated", names(instancesParsed))]
+			if(length(instancesParsed[grep("terminated", names(instancesParsed))]) > 0) {
+				instancesParsed <- instancesParsed[-grep("terminated", names(instancesParsed))]
+			}
 
 			runningInstances <- NULL; machinenames <- NULL; ri <- 1
 			for (a in 1:length(instancesParsed)) {
