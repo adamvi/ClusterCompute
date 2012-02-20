@@ -19,7 +19,7 @@
 #				 p.group = "my.cluster.placegroup",
 #				 packages = c("SGP", "plyr"),
 #				 master.files = c("test_scripts.R", "file.R"),
-#				 node.files = "data.table_1.5.1.tar.gz",
+#				 all.node.files = "data.table_1.5.1.tar.gz",
 #				 xtra.SYScmd = c("dd if=/dev/zero of=/mnt/swap bs=1M count=5000", "mkswap /mnt/swap",
 #								 "swapon /mnt/swap", "sysctl -w vm.swappiness=80"))
 ###
@@ -370,8 +370,8 @@
 		 	}
 		}
 	# Secure copy the common files over to ALL Nodes (including Master)
-		if (!missing(node.files)) for (r in 1:length(node.files)) {
-			cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, "/", node.files[r],
+		if (!missing(all.node.files)) for (r in 1:length(all.node.files)) {
+			cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, "/", all.node.files[r],
 				" root@", machinenames[q], ":", target.directory[[2]], "')!=0) {Sys.sleep(3)}\n\n", sep="", 
 				file=paste("CLUSTER_CONFIG_FILES/Local_CMD_", (q-1), ".R", sep = ""), append=TRUE)
 		}

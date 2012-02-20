@@ -1,5 +1,9 @@
 Package: ClusterCompute
+<<<<<<< HEAD
 Version: 0.0-2.1
+=======
+Version: 0.0-2.2
+>>>>>>> Oops.  Other changes.  Now at 0.0-2.2
 Date: 2012-2-19
 Title: Amazon Web Services Compute Cluster Configuration and Management
 Author@R: person("Adam", "Van Iwaarden",
