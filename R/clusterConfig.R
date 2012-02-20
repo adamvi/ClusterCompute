@@ -31,24 +31,36 @@
 	slots=list(MASTER=c(6,6), WORKERS=c(8,8)),	#	Number of slots and max.slots to use in the machinefile.  Must be length = 2 
 	ec2.path,					#	The file path to the users EC2 Tools directory (where tools and .pem files are kept)
 	keypair,					#	EC2 keypair name - a .pem file
-	inst.type = "cc1.4xlarge",  #	EC2 Instance type - not sure if other (non-HPC) instance types can be used...
+	inst.type = "cc2.8xlarge",  #	EC2 Instance type - not sure if other (non-HPC) instance types can be used...
+	l.group="my.cluster",		#	Name of the launch group.  Does not need to be established prior to use, but must be non-missing in order to insure all cluster instances are launched simultaneously.
 	s.group,					#	Name of the security group (assumed to be set up prior to use)
 	p.group,					#	Name of the placement group (assumed to be set up prior to use)
-	rerun = FALSE,				#	The function can be rerun without starting new instances with rerun = TRUE
+	run.instances = FALSE,		#	Should the function start new instances. Default is FALSE, assuming user has previously started instances ...
+	spot.instances = TRUE,		#	Should the function bid on spot instances. Default is TRUE. If FALSE, instances will start immediately at full price.
+	price,						#	Maximum price user would like to bid on spot instances. See documentation for 'ec2-request-spot-instances' for more information.
+	block.device.mapping,		#	Describes the mapping that defines native device names to use when exposing virtual devices.
 	packages,					#	R packages needed to be installed on all nodes. Passed as a concatenated string (e.g. c("plyr", "SGP"))
 	options = "dep = T",		#	Options argument passed to EACH package installation as ONE string.  Default includes dependencies.
-	repos = "http://software.rc.fas.harvard.edu/mirrors/R/", #	User's prefered repository.  Default is Harvard - AWS cluster compute instances are in East Coast region.
+	repos = "http://watson.nci.nih.gov/cran_mirror/", #	User's prefered repository. Default is MD, which works quickly AWS cluster compute instances.
 	master.files,				#	Data files, R script files, etc. user wants to secure copy (scp) to the Master node.
-	node.files,					#	Data files, R script files, etc. user wants to secure copy (scp) to the ALL nodes.
+	all.node.files,					#	Data files, R script files, etc. user wants to secure copy (scp) to the ALL nodes.
+	local.directory,			#	If missing, the current working directory will be used.
+	target.directory = list(MASTER="/root", All.NODES="/root"),	#	list of two elements, both character strings.  The first is the target directory for master.files, the second is that for all.nodes.files
 	xtra.Rcmd,					#	Additional (or more complicated) commands to execute remotely on each instance of R.
 	xtra.SYScmd) {				#	Commands to execute remotely on each node as ROOT (e.g. R CMD INSTALL NewPackage_0.0.tar.gz)
 
 	### Check to make sure working directory file name is valid (no spaces) and ec2.path ends in a forward slash (for Mac and Linux).
-	wd <- getwd()
-	if (length(grep(" ", wd))) stop(paste("Working directory file name can not contain spaces.\n\t	Please re-name file or change directory"))
+	if (missing(local.directory))	local.directory <- getwd()
+
+	if (substring(target.directory[[1]], 1, 1)!="/") target.directory[[1]] <- paste("/", target.directory[[1]], sep="")
+	if (substring(target.directory[[2]], 1, 1)!="/") target.directory[[2]] <- paste("/", target.directory[[2]], sep="")
+	if (substring(target.directory[[1]], nchar(target.directory[[1]]), nchar(target.directory[[1]]))=="/") target.directory[[1]] <- substring(target.directory[[1]], 1, nchar(target.directory[[1]])-1)
+	if (substring(target.directory[[2]], nchar(target.directory[[2]]), nchar(target.directory[[2]]))=="/") target.directory[[2]] <- substring(target.directory[[2]], 1, nchar(target.directory[[2]])-1)		
+
+	if (length(grep(" ", local.directory))) stop(paste("Local directory name can not contain spaces (will occasionally fail with EC2 Tools).\n\t	Please re-name or change directory."))
 	
-	if (missing(ec2.path)) stop("ec2.path argument is missing.  The path to the EC2 API Tools is REQUIRED.")
-	if (substring(ec2.path, nchar(ec2.path), nchar(ec2.path))!="/") ec2.path<- paste(ec2.path, "/", sep="")
+	if (missing(ec2.path)) stop("ec2.path argument is missing.  The path to the EC2 API Tools and *.pem keypairs is REQUIRED.")
+	if (substring(ec2.path, nchar(ec2.path), nchar(ec2.path))!="/") ec2.path <- paste(ec2.path, "/", sep="")
 	
 	### Create directory to house the source file
 	if (is.na(file.info("CLUSTER_CONFIG_FILES")$isdir)) {
@@ -58,10 +70,41 @@
 	cat(rawToChar(serialize(call, NULL, ascii=T)),  "\n", sep = "", file = "CLUSTER_CONFIG_FILES/call.txt") 
 
 	###  Start up instances using EC2 Tools command line application
-	if (!rerun) {
-		kp <- gsub(".pem", "", keypair)
-		eval(parse(text=paste("system('cd ", ec2.path, "; ec2-run-instances ", ami.id, " -n ", num.nodes, " -g ",  s.group,
-			" -k ",  kp," --instance-type ", inst.type, " --placement-group ", p.group,  "')", sep = "")))
+	if (run.instances) {
+		kp <- gsub(".pem", "", keypair) # remove .pem file extention.  Not needed and better to be consistent.
+
+		if (spot.instances) {
+			if (missing(price)) {
+				price <- sapply(eval(parse(text=paste("system('cd ", ec2.path, "; ec2-describe-spot-price-history --instance-type ", inst.type, "', intern=TRUE)", sep=""))), strsplit, "\t")
+				price <- round(mean(as.numeric(sapply(1:length(price), function(x) price[[x]][2]))), 3)
+			}
+			eval(parse(text=paste("system('cd ", ec2.path, "; ec2-request-spot-instances ", ami.id, " --price ", price, " --instance.count ", num.nodes, 
+				" --launch-group ",  l.group, " --group ",  s.group, " --placement-group ", p.group, 
+				" -b ", block.device.mapping, " --key ",  kp, " --instance-type ", inst.type, "')", sep = "")))
+			
+			Sys.sleep(60) # wait at least a minute before starting system query
+			
+			### Query EC2 Tools for open spot requests 
+			requestsParsed <- sapply(system("ec2-describe-spot-instance-requests", intern=TRUE), strsplit, "\t")
+			if (requestsParsed[[end]][6]=="open") message("Spot-Instance Request is OPEN.  Awaiting 'active' status and running instance status.")
+
+			notRunning <- TRUE; startInstances <- NULL
+			while(notRunning) {
+				requestsParsed <- sapply(system("ec2-describe-spot-instance-requests", intern=TRUE), strsplit, "\t")
+				end <- length(requestsParsed)
+
+				if (requestsParsed[[end]][6]=="active") notRunning <- FALSE  else notRunning <- TRUE
+				if (requestsParsed[[end]][6]=="cancelled") stop("Spot-Instance Request CANCELLED.")
+
+				if (requestsParsed[[end]][1]=="SPOTINSTANCEFAULT") {
+					stop("Fault occurred in Spot-Instance Request. \nError Message(s) returned from EC2: \n", paste(requestsParsed[[end]][-1], collapse="\n"))
+				}
+			} # END while(notRunning)
+		}	else {
+			eval(parse(text=paste("system('cd ", ec2.path, "; ec2-run-instances ", ami.id, " --instance.count ", num.nodes, 
+				" --group ",  s.group, " --placement-group ", p.group,
+				" --key ",  kp, " --instance-type ", inst.type,  " -b ", block.device.mapping, "')", sep = "")))		
+		} # END if (spot.instances) / else ...
 
 	### Query EC2 Tools for running instances and get machine names 
 	# New code based on JD Long: https://gist.github.com/478930#file_start_ec2_instance_ssh.r
@@ -69,24 +112,24 @@
 	while(notRunning) {
 		while(length(runningInstances)!=num.nodes) {
 			instancesParsed <- sapply(system("ec2-describe-instances", intern=TRUE), strsplit, "\t")
-			runningInstances <- NULL; machinenames <- NULL; ri <- 1
-				for (a in 1:length(instancesParsed)) {
-					if (instancesParsed[[a]][[1]]=="INSTANCE") {
-						if (instancesParsed[[a]][[6]]=="running") {
-							runningInstances[[ri]] <- instancesParsed[[a]]
-							machinenames[[ri]] <- runningInstances[[ri]][[4]]
-							startTime <- strptime(runningInstances[[ri]][[11]], "%Y-%m-%dT%H:%M:%S")
-							ri <- ri + 1
-							notRunning <- FALSE
-						} else notRunning <- TRUE
-					} #END if (instancesParsed[[a]][[1]]=="INSTANCE")
-				} # END a loop
-			} # END while(length(...))
+			runningInstances <- NULL; machinenames <- NULL; ri <- 1; last.inst <- length(instancesParsed)
+			for (a in (last.inst-num.nodes+1):last.inst) {
+				if (instancesParsed[[a]][[1]]=="INSTANCE") {
+					if (instancesParsed[[a]][[6]]=="running") {
+						runningInstances[[ri]] <- instancesParsed[[a]]
+						machinenames[[ri]] <- runningInstances[[ri]][[4]]
+						startTime <- strptime(runningInstances[[ri]][[11]], "%Y-%m-%dT%H:%M:%S")
+						ri <- ri + 1
+						notRunning <- FALSE
+					} else notRunning <- TRUE
+				} #END if (instancesParsed[[a]][[1]]=="INSTANCE")
+			} # END a loop
+		} # END while(length(...))
 	} # END while(notRunning)
 	
 	#  Instances don't fully start up even when status is "running."  Wait another 2 minutes.  
-	#  If still not running, rerun function with rerun = TRUE.
-	Sys.sleep(120)
+	#  If still not running, run.instances function with run.instances = TRUE.
+	Sys.sleep(90)
 
 	if (num.nodes == 1) {
 		cat("\n\n\nEC2 Session begun at ", as.character(startTime), 
@@ -97,13 +140,42 @@
 			"\nInstances now running.  Files will be copied to Master Node, passwordless SSH established between nodes and remote commands executed.",
 			"\nProgress and debugging info can be checked in the Local_CMD.Rout files in the working directory\n\n\n") 
 		}
-	} # END if(!rerun) - Start up instances 
+	} # END if(run.instances) - Start up instances 
 
-	if (rerun) {
+	if (!run.instances) {
+
+		if (spot.instances) {
+			requestsParsed <- sapply(system("ec2-describe-spot-instance-requests", intern=TRUE), strsplit, "\t")
+			end <- length(requestsParsed)
+			if (end > 0) status <- requestsParsed[[end]][6]  else spot.instances <- FALSE
+		}#  else status <- "no_requests"
+
+		if (spot.instances & status != "active") {
+			notRunning <- TRUE; startInstances <- NULL
+			while(notRunning) {
+				requestsParsed <- sapply(system("ec2-describe-spot-instance-requests", intern=TRUE), strsplit, "\t")
+
+				if (requestsParsed[[end]][6]=="active") notRunning <- FALSE
+				if (requestsParsed[[end]][6]=="cancelled") stop("Spot-Instance Request CANCELLED.  Please make new spot-instance request or change argument to 'spot.instances=FALSE'.")
+
+				if (requestsParsed[[end]][1]=="SPOTINSTANCEFAULT") {
+					stop("Fault occurred in Spot-Instance Request. \nError Message(s) returned from EC2: \n", paste(requestsParsed[[end]][-1], collapse="\n"))
+				}
+			} # END while(notRunning)
+		}
+
 		instancesParsed <- sapply(system("ec2-describe-instances", intern=TRUE), strsplit, "\t")
+		last.inst <- length(instancesParsed)
+		if (status == "active" & last.inst == 0) {
+			Sys.sleep(90)
+			if (length(sapply(system("ec2-describe-instances", intern=TRUE), strsplit, "\t")) == 0) stop("Instances")
+		}
+
 		runningInstances <- NULL; machinenames <- NULL; ri <- 1
-		for (b in 1:length(instancesParsed)) {
+		for (b in (last.inst-num.nodes+1):last.inst) {
 			if (instancesParsed[[b]][[1]]=="INSTANCE") {
+				if (instancesParsed[[b]][[6]]=="terminated") 
+
 				if (instancesParsed[[b]][[6]]=="running") {
 					runningInstances[[ri]] <- instancesParsed[[b]]
 					machinenames[[ri]] <- instancesParsed[[b]][[4]]
@@ -111,10 +183,10 @@
 				}
 			}
 		}
-	} # END if (rerun)
+	} # END if (!run.instances)
 
 	# serialize and save 'runningInstances' object to use later in killCluster and killWorker functions (if executed from another instance of R)
-	# Moved outside of notRunning loop so that it is re-written if "rerun."
+	# Moved outside of notRunning loop so that it is re-written if "run.instances."
 	cat(rawToChar(serialize(runningInstances, NULL, ascii=TRUE)),  "\n", sep = "", file = "CLUSTER_CONFIG_FILES/runningInstances.txt")
 
 	######################################################################################################################################################
@@ -145,7 +217,7 @@
 
 		if (singleNode == 1) { # 1) copy the file 2) execute it remotely once its there.
 			cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", 
-				wd, "/CLUSTER_CONFIG_FILES/remoteRstuff.R root@", machinenames[1], ":/root')!=0) {Sys.sleep(3)}\n\n", sep="", 
+				local.directory, "/CLUSTER_CONFIG_FILES/remoteRstuff.R root@", machinenames[1], ":", target.directory[[1]], "')!=0) {Sys.sleep(3)}\n\n", sep="", 
 				file="CLUSTER_CONFIG_FILES/singleNode_0.R")
 
 			cat("while(system('cd ", ec2.path, "; ssh -i ", keypair, " root@", machinenames[1],
@@ -156,8 +228,8 @@
 		# scp files to the Instance
 		count <- 1
 		if (!missing(master.files)) for (y in singleNode:(singleNode + length(master.files))) {
-			cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", wd, "/",
-			master.files[count], " root@", machinenames[1], ":/root')!=0) {Sys.sleep(3)}\n\n", sep="", 
+			cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, "/",
+			master.files[count], " root@", machinenames[1], ":", target.directory[[1]], "')!=0) {Sys.sleep(3)}\n\n", sep="", 
 				file=paste("CLUSTER_CONFIG_FILES/singleNode_", y, ".R", sep=""))
 			singleNode <- y; count <- count+1
 		}
@@ -197,7 +269,7 @@
 	for (d in 1:length(machinenames)) {
 		if (d == 1) apnd<-FALSE else apnd<-TRUE
 		cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", ec2.path, keypair," root@", 
-			machinenames[d], ":/root')!=0) {Sys.sleep(3)}\n\n", sep="", file="CLUSTER_CONFIG_FILES/Local_CMD.R", append=apnd)
+			machinenames[d], ":", target.directory[[1]], "')!=0) {Sys.sleep(3)}\n\n", sep="", file="CLUSTER_CONFIG_FILES/Local_CMD.R", append=apnd)
 	}
 	
 	# Create the first set of node command files (one per node)
@@ -221,10 +293,10 @@
 	# Local_CMD file commands to secure copy the Node#_x.R files to the appropriate node.
 		for (l in 1:length(machinenames)) {
 			if (l==j) {
-				cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", wd, 
+				cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, 
 					"/CLUSTER_CONFIG_FILES/Node", (j-1),"_a.R root@", machinenames[j], ":/root')!=0) {Sys.sleep(3)}\n\n", sep="", 
 					file="CLUSTER_CONFIG_FILES/Local_CMD.R", append=TRUE)
-				cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", wd, 
+				cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, 
 					"/CLUSTER_CONFIG_FILES/Node", (j-1),"_b.R root@", machinenames[j], ":/root')!=0) {Sys.sleep(3)}\n\n", sep="", 
 					file="CLUSTER_CONFIG_FILES/Local_CMD.R", append=TRUE)
 			}
@@ -283,22 +355,23 @@
 			avail.slots <- slots[["WORKERS"]][1]; max.slots <- slots[["WORKERS"]][2]
 		}
 		cat(machinenames[q], " slots = ", avail.slots, " max-slots = ", max.slots, "\n", sep="", file="CLUSTER_CONFIG_FILES/machinefile", append=apnd)
-	# Secure copy the machinefile file and data files over to the Master Node
+	# Secure copy the machinefile file to the Master Node
 		if (q==1) {
-			cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", wd, 
+			cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, 
 				"/CLUSTER_CONFIG_FILES/machinefile root@", machinenames[1], ":/root')!=0) {Sys.sleep(3)}\n\n", sep="", 
 				file="CLUSTER_CONFIG_FILES/Local_CMD_0.R", append=TRUE)
 
+		# Secure copy the data files to the Master Node
 			if (!missing(master.files)) for (f in 1:length(master.files)) {
-				cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", wd, "/", 
-					master.files[f], " root@", machinenames[q], ":/root')!=0) {Sys.sleep(3)}\n\n", sep="", 
+				cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, "/", 
+					master.files[f], " root@", machinenames[q], ":", target.directory[[1]], "')!=0) {Sys.sleep(3)}\n\n", sep="", 
 					file="CLUSTER_CONFIG_FILES/Local_CMD_0.R", append=TRUE)
 		 	}
 		}
 	# Secure copy the common files over to ALL Nodes (including Master)
 		if (!missing(node.files)) for (r in 1:length(node.files)) {
-			cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", wd, "/", node.files[r],
-				" root@", machinenames[q], ":/root')!=0) {Sys.sleep(3)}\n\n", sep="", 
+			cat("while(system('cd ", ec2.path, "; scp -r -P 22 -o StrictHostKeyChecking=no -i ", keypair, " ", local.directory, "/", node.files[r],
+				" root@", machinenames[q], ":", target.directory[[2]], "')!=0) {Sys.sleep(3)}\n\n", sep="", 
 				file=paste("CLUSTER_CONFIG_FILES/Local_CMD_", (q-1), ".R", sep = ""), append=TRUE)
 		}
 	# Try the command 2 times - if it doesn't work don't hold up the process.  User will need to execute the system command on each node.
