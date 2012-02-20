@@ -182,7 +182,6 @@
 	} # END if(run.instances) - Start up instances 
 
 	if (!run.instances) {
-
 		if (spot.instances) {
 			requestsParsed <- sapply(system("ec2-describe-spot-instance-requests", intern=TRUE), strsplit, "\t")
 			num.reqs <- length(requestsParsed)
@@ -205,7 +204,9 @@
 
 		instancesParsed <- sapply(system("ec2-describe-instances", intern=TRUE), strsplit, "\t")
 		instancesParsed <- instancesParsed[grep("INSTANCE", names(instancesParsed))]
-		instancesParsed <- instancesParsed[-grep("terminated", names(instancesParsed))]
+		if(length(instancesParsed[grep("terminated", names(instancesParsed))]) > 0) {
+			instancesParsed <- instancesParsed[-grep("terminated", names(instancesParsed))]
+		}
 
 		last.inst <- length(instancesParsed)
 		if (status == "active" & last.inst == 0) {
