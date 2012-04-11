@@ -13,12 +13,14 @@ function(workers=length(insts)-1, specific.node, kill.master=FALSE) {
 		stop("The working directory must be same file as the one used to start and configure the cluster instance(s) - i.e. the parent file of CLUSTER_CONFIG_FILES.\n\n")
 	}
 
-	if (specific.node==0 & !kill.master) stop("You have indicated termination of the MASTER node (node number 0).  
-		The 'kill.master' argument must be set to 'TRUE' to terminate MASTER node and .")
-
-	if (specific.node > 0 & kill.master) stop("The 'kill.master' argument has been set to 'TRUE' but the MASTER node (node number 0) has not been selected.  
-		The arguments must be set to 'specific.node = 0' and 'kill.master = TRUE' to terminate MASTER node.")
-		
+	if (!missing(specific.node)) {
+		if (specific.node==0 & !kill.master) stop("You have indicated termination of the MASTER node (node number 0).  
+			The 'kill.master' argument must be set to 'TRUE' to terminate MASTER node and .")
+	
+		if (specific.node > 0 & kill.master) stop("The 'kill.master' argument has been set to 'TRUE' but the MASTER node (node number 0) has not been selected.  
+			The arguments must be set to 'specific.node = 0' and 'kill.master = TRUE' to terminate MASTER node.")
+	}
+	
 	# Get instance id's from running instances (from file or by using ec2 Tools)
 	options(warn=-1)
 	insts<-NULL
@@ -39,18 +41,23 @@ function(workers=length(insts)-1, specific.node, kill.master=FALSE) {
 		}
 	}
 
-	if (length(insts)==1) terminate <- FALSE
-	while (!terminate) {
-		kill <- readline(prompt = "\n\nOnly one (MASTER) node instance is currently running!  Do you want to terminate the MASTER NODE instance?  [y/n]")
-		if (toupper(kill)=="N") stop("\n\nkillWorker() aborted.  Master node instance is still running.")
-		if (toupper(kill)=="Y") terminate <- TRUE else next
+	if (length(insts)==1) {
+		terminate <- FALSE
+		while (!terminate) {
+			kill <- readline(prompt = "\n\nOnly one (MASTER) node instance is currently running!  Do you want to terminate the MASTER NODE instance?  [y/n]")
+			if (toupper(kill)=="N") stop("\n\nkillWorker() aborted.  Master node instance is still running.")
+			if (toupper(kill)=="Y") terminate <- TRUE else next
+		}
 	}
 
-	if (workers == length(insts)) terminate <- FALSE
-	while (!terminate) {
-		kill <- readline(prompt = "\n\nYou have requested more WORKERS than are currently running.  This will terminate the entire CLUSTER.  Do you want to continue?  [y/n]")
-		if (toupper(kill)=="N") stop("\n\nkillWorker() aborted.  All instances are still running.")
-		if (toupper(kill)=="Y") terminate <- TRUE else next
+	if (workers == length(insts)) {
+		terminate <- FALSE
+		while (!terminate) {
+			kill <- readline(prompt = "\n\nYou have requested ALL instances than are currently running, including the MASTER.  This will terminate the entire CLUSTER.  
+				Do you want to continue?  [y/n]")
+			if (toupper(kill)=="N") stop("\n\nkillWorker() aborted.  All instances are still running.")
+			if (toupper(kill)=="Y") terminate <- TRUE else next
+		}
 	}
 
 	if (!missing(specific.node)) {
