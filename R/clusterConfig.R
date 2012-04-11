@@ -57,11 +57,12 @@
 	# Check to make sure working directory file name is valid (no spaces) and ec2.path ends in a forward slash (for Mac and Linux).
 	if (missing(local.directory))	local.directory <- getwd()
 
-	if (substring(target.directory[[1]], 1, 1)!="/") target.directory[[1]] <- paste("/", target.directory[[1]], sep="")
-	if (substring(target.directory[[2]], 1, 1)!="/") target.directory[[2]] <- paste("/", target.directory[[2]], sep="")
-	if (substring(target.directory[[1]], nchar(target.directory[[1]]), nchar(target.directory[[1]]))=="/") target.directory[[1]] <- substring(target.directory[[1]], 1, nchar(target.directory[[1]])-1)
-	if (substring(target.directory[[2]], nchar(target.directory[[2]]), nchar(target.directory[[2]]))=="/") target.directory[[2]] <- substring(target.directory[[2]], 1, nchar(target.directory[[2]])-1)		
-
+	for (d in 1:length(target.directory)) {
+		if (substring(target.directory[[d]], 1, 1)!="/") target.directory[[d]] <- paste("/", target.directory[[d]], sep="")
+		if (substring(target.directory[[d]], nchar(target.directory[[d]]), nchar(target.directory[[d]]))=="/") target.directory[[d]] <- 
+			substring(target.directory[[d]], 1, nchar(target.directory[[d]])-1)
+	}
+	
 	if (length(grep(" ", local.directory))) stop(paste("Local directory name can not contain spaces (will occasionally fail with EC2 Tools).\n\t	Please re-name or change directory."))
 	
 	if (missing(ec2.path)) stop("ec2.path argument is missing.  The path to the EC2 API Tools and *.pem keypairs is REQUIRED.")

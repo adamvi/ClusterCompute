@@ -53,7 +53,7 @@ function(new.files, node.numbers=0, local.directory, instance.directory="root/",
 	for (n in node.numbers){
 		for (f in 1:length(new.files)) {
 			eval(parse(text=paste("system('scp -r -P 22 -o StrictHostKeyChecking=no -i ", clst.call$ec2.path, clst.call$keypair, " ", 
-				local.directory, new.files[f], " root@", insts[[(n+1)]][[4]], ":/", instance.directory, ")", sep="")))
+				local.directory, new.files[f], " root@", insts[[(n+1)]][[4]], ":/", instance.directory, "')", sep="")))
 		}
 	}
 } # END sendFiles function
