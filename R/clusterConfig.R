@@ -140,9 +140,9 @@
 			} # END while(notRunning)
 			Sys.sleep(60) # Wait a minute while instances FULLY start up.
 		}	else {
-			eval(parse(text=paste("system(\"cd ", ec2.path, "; ec2-run-instances ", ami.id, " --instance.count ", num.nodes, 
-				" --group ",  s.group, " --placement-group ", p.group,
-				" --key ",  kp, " --instance-type ", inst.type,  block.device.mapping, "\")", sep = "")))		
+			eval(parse(text=paste("system(\"cd ", ec2.path, "; ec2-run-instances ", ami.id, " -n ", num.nodes, 
+				" -g ",  s.group, " --placement-group ", p.group, " -k ",  kp,
+				" -t ", inst.type,  block.device.mapping, "\")", sep = "")))		
 		} # END if (spot.instances) / else ...
 
 	### Query EC2 Tools for running instances and get machine names 
