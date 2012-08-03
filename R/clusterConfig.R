@@ -264,9 +264,10 @@
 		}
  
 		if (!missing(xtra.Rcmd)) {
-			if (singleNode == 0) apnd<-FALSE else apnd<-TRUE
+			if (singleNode == 0) apnd <- FALSE else apnd <- TRUE
 			for (x in 1:length(xtra.Rcmd)) {
 		  		cat(xtra.Rcmd[x], "\n", sep="", file="CLUSTER_CONFIG_FILES/remoteRstuff.R", append=apnd)
+		  		apnd <- TRUE
 			}
 			singleNode <-1
 		}
